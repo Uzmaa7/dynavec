@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable, Sequence
 from typing import Any
 
 from ..chat.base import ChatModel, Message, Tool
-from .base import AgentResult, AgentStep, AgentTool
-
 from ..exceptions import NodeInterrupt
-import json
+from .base import AgentResult, AgentStep, AgentTool
 
 DEFAULT_REACT_SYSTEM_PROMPT = """You are a helpful and precise reasoning agent.
 You solve tasks step-by-step using a ReAct (Reason + Act) approach.
@@ -67,9 +66,7 @@ class ReActAgent:
     ) -> AgentResult:
         """Resume an interrupted run synchronously by injecting the human decision into context."""
         decision_str = (
-            json.dumps(human_decision)
-            if isinstance(human_decision, dict)
-            else str(human_decision)
+            json.dumps(human_decision) if isinstance(human_decision, dict) else str(human_decision)
         )
         messages.append(Message(role="user", content=f"Human Decision / Input: {decision_str}"))
         return self._execute_loop(
@@ -168,7 +165,6 @@ class ReActAgent:
             tool_calls_count=total_tool_calls,
         )
 
-    
     async def arun(self, goal: str, thread_id: str = "default", **kwargs: Any) -> AgentResult:
         """Execute the ReAct loop asynchronously until goal completion, max_steps, or interrupt."""
         messages: list[Message] = []
@@ -176,7 +172,9 @@ class ReActAgent:
             messages.append(Message(role="system", content=self.system_prompt))
         messages.append(Message(role="user", content=goal))
 
-        return await self._aexecute_loop(messages=messages, thread_id=thread_id, start_step=1, **kwargs)
+        return await self._aexecute_loop(
+            messages=messages, thread_id=thread_id, start_step=1, **kwargs
+        )
 
     async def aresume(
         self,
@@ -188,9 +186,7 @@ class ReActAgent:
     ) -> AgentResult:
         """Resume an interrupted run asynchronously by injecting human decision into context."""
         decision_str = (
-            json.dumps(human_decision)
-            if isinstance(human_decision, dict)
-            else str(human_decision)
+            json.dumps(human_decision) if isinstance(human_decision, dict) else str(human_decision)
         )
         messages.append(Message(role="user", content=f"Human Decision / Input: {decision_str}"))
         return await self._aexecute_loop(

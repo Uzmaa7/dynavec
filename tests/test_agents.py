@@ -43,9 +43,7 @@ class ScriptedChatModel(ChatModel):
         if self.call_count >= len(self.responses):
             # Default response if script exhausted
             return ChatResult(
-                message=Message(
-                    role="assistant", content="Scripted responses exhausted."
-                ),
+                message=Message(role="assistant", content="Scripted responses exhausted."),
                 finish_reason="stop",
             )
 

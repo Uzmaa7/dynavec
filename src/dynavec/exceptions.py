@@ -70,8 +70,6 @@ class MissingDependencyError(DynavecError):
         self.extra = extra
 
 
-
-
 class NodeInterrupt(DynavecError):
     """Raised when an agent execution node pauses waiting for human approval or input."""
 

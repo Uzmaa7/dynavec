@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator
-import pytest
 
 from dynavec.agents.base import interrupt, tool
 from dynavec.agents.react import ReActAgent
@@ -30,7 +29,9 @@ class MockChatModel(ChatModel):
         res = self.invoke(messages, tools=tools, **kwargs)
         yield res
 
-    async def astream(self, messages: list[Message], tools=None, **kwargs) -> AsyncIterator[ChatResult]:
+    async def astream(
+        self, messages: list[Message], tools=None, **kwargs
+    ) -> AsyncIterator[ChatResult]:
         res = await self.ainvoke(messages, tools=tools, **kwargs)
         yield res
 
@@ -127,6 +128,7 @@ def test_resume_execution():
 
 def test_async_interrupt_and_resume():
     """Test async arun and aresume functionality using asyncio.run."""
+
     async def _run_async():
         initial_responses = [
             ChatResult(
@@ -157,7 +159,9 @@ def test_async_interrupt_and_resume():
                 )
             )
         ]
-        resume_agent = ReActAgent(model=MockChatModel(resume_responses), tools=[sensitive_action_tool])
+        resume_agent = ReActAgent(
+            model=MockChatModel(resume_responses), tools=[sensitive_action_tool]
+        )
 
         final_result = await resume_agent.aresume(
             messages=result.interrupt_payload["messages"],

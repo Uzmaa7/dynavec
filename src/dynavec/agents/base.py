@@ -6,12 +6,9 @@ import inspect
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-
-
-from ..chat.base import Tool, ToolCall
-import functools
 from typing import Any, overload
 
+from ..chat.base import Tool, ToolCall
 
 
 @dataclass
@@ -31,10 +28,13 @@ class AgentResult:
     output: str
     steps: list[AgentStep] = field(default_factory=list)
     finished: bool = True
-    termination_reason: str = "completed"  # "completed", "max_steps_reached", "error", "interrupted"
+    termination_reason: str = (
+        "completed"  # "completed", "max_steps_reached", "error", "interrupted"
+    )
     total_steps: int = 0
     tool_calls_count: int = 0
     interrupt_payload: dict[str, Any] | None = None
+
 
 @dataclass
 class PlanStep:
@@ -120,11 +120,11 @@ class AgentTool:
     ) -> None:
         self.fn = fn
         # Extract name directly or fall back to function attribute
-        self.name = name or getattr(fn, "name", None) or getattr(fn, "__name__", None) or "unnamed_tool"
-        self.description = description or (fn.__doc__ or f"Execute {self.name}").strip()
-        self.parameters = (
-            parameters if parameters is not None else _generate_json_schema(fn)
+        self.name = (
+            name or getattr(fn, "name", None) or getattr(fn, "__name__", None) or "unnamed_tool"
         )
+        self.description = description or (fn.__doc__ or f"Execute {self.name}").strip()
+        self.parameters = parameters if parameters is not None else _generate_json_schema(fn)
 
     def to_chat_tool(self) -> Tool:
         """Convert to a dynavec.chat.Tool schema."""
@@ -161,9 +161,7 @@ class AgentTool:
                 result = self.fn()
             elif len(params) == 1 and list(params.keys())[0] not in parsed_args:
                 # If single param expected and keys don't match, pass the first val or raw dict
-                first_val = (
-                    next(iter(parsed_args.values())) if parsed_args else arguments
-                )
+                first_val = next(iter(parsed_args.values())) if parsed_args else arguments
                 result = self.fn(first_val)
             else:
                 # Filter only valid keyword arguments
@@ -173,7 +171,7 @@ class AgentTool:
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
-        
+
         except NodeInterrupt:
             raise
 
@@ -187,6 +185,7 @@ class AgentTool:
 @overload
 def tool(fn: Callable[..., Any], /) -> AgentTool: ...
 
+
 @overload
 def tool(
     *,
@@ -195,13 +194,14 @@ def tool(
     parameters: dict[str, Any] | None = None,
 ) -> Callable[[Callable[..., Any]], AgentTool]: ...
 
+
 def tool(
     fn_or_name: Callable[..., Any] | str | None = None,
     description: str | None = None,
     parameters: dict[str, Any] | None = None,
 ) -> AgentTool | Callable[[Callable[..., Any]], AgentTool]:
     """Decorator to convert a standard Python function into an AgentTool.
-    
+
     Supports both `@tool` and `@tool(name="...", description="...")`.
     """
     # Case 1: Used as `@tool` without parentheses
