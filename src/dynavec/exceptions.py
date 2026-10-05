@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class DynavecError(Exception):
     """Base class for all dynavec errors."""
@@ -73,7 +75,9 @@ class MissingDependencyError(DynavecError):
 class NodeInterrupt(DynavecError):
     """Raised when an agent execution node pauses waiting for human approval or input."""
 
-    def __init__(self, thread_id: str, node_id: str, payload: dict | None = None) -> None:
+    def __init__(
+        self, thread_id: str, node_id: str, payload: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(
             f"Execution interrupted at node {node_id!r} for thread {thread_id!r}. "
             "Awaiting human input."

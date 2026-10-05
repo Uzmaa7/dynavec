@@ -182,6 +182,15 @@ class AgentTool:
         return self.fn(*args, **kwargs)
 
 
+
+
+
+
+
+
+
+
+
 @overload
 def tool(fn: Callable[..., Any], /) -> AgentTool: ...
 
@@ -197,26 +206,23 @@ def tool(
 
 def tool(
     fn_or_name: Callable[..., Any] | str | None = None,
+    *,
+    name: str | None = None,
     description: str | None = None,
     parameters: dict[str, Any] | None = None,
 ) -> AgentTool | Callable[[Callable[..., Any]], AgentTool]:
-    """Decorator to convert a standard Python function into an AgentTool.
+    """Decorator to convert a standard Python function into an AgentTool."""
+    custom_name = name if name is not None else (fn_or_name if isinstance(fn_or_name, str) else None)
 
-    Supports both `@tool` and `@tool(name="...", description="...")`.
-    """
-    # Case 1: Used as `@tool` without parentheses
     if callable(fn_or_name):
         fn = fn_or_name
-        tool_name = getattr(fn, "__name__", "unnamed_tool")
+        tool_name = custom_name or getattr(fn, "__name__", "unnamed_tool")
         return AgentTool(
             fn=fn,
             name=tool_name,
             description=description,
             parameters=parameters,
         )
-
-    # Case 2: Used as `@tool(...)` with optional keyword arguments
-    custom_name = fn_or_name  # In this branch, fn_or_name is a string or None
 
     def decorator(fn: Callable[..., Any]) -> AgentTool:
         if isinstance(fn, AgentTool):

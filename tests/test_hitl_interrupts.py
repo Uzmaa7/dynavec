@@ -1,4 +1,5 @@
 """Tests for Human-in-the-loop / interrupts functionality in dynavec agents."""
+from __future__ import annotations
 
 import asyncio
 import json
