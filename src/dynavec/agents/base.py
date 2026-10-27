@@ -6,9 +6,10 @@ import inspect
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, overload
+from typing import Any
 
 from ..chat.base import Tool, ToolCall
+from ..exceptions import NodeInterrupt
 
 
 @dataclass
@@ -28,9 +29,7 @@ class AgentResult:
     output: str
     steps: list[AgentStep] = field(default_factory=list)
     finished: bool = True
-    termination_reason: str = (
-        "completed"  # "completed", "max_steps_reached", "error", "interrupted"
-    )
+    termination_reason: str = "completed"  # "completed", "max_steps_reached", "error"
     total_steps: int = 0
     tool_calls_count: int = 0
     interrupt_payload: dict[str, Any] | None = None
@@ -117,14 +116,15 @@ class AgentTool:
         name: str | None = None,
         description: str | None = None,
         parameters: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         self.fn = fn
-        # Extract name directly or fall back to function attribute
-        self.name = (
-            name or getattr(fn, "name", None) or getattr(fn, "__name__", None) or "unnamed_tool"
-        )
+        self.name = name or fn.__name__
         self.description = description or (fn.__doc__ or f"Execute {self.name}").strip()
-        self.parameters = parameters if parameters is not None else _generate_json_schema(fn)
+        self.parameters = (
+            parameters if parameters is not None else _generate_json_schema(fn)
+        )
+        self.tags = tags or []
 
     def to_chat_tool(self) -> Tool:
         """Convert to a dynavec.chat.Tool schema."""
@@ -134,10 +134,8 @@ class AgentTool:
             parameters=self.parameters,
         )
 
-    def execute(self, arguments: dict[str, Any] | str | None = None) -> str:
-        """Execute the wrapped function and return a string observation."""
-        from ..exceptions import NodeInterrupt
-
+    def _parse_arguments(self, arguments: dict[str, Any] | str | None = None) -> dict[str, Any]:
+        """Parse raw arguments into a kwargs dictionary."""
         parsed_args: dict[str, Any] = {}
         if isinstance(arguments, str):
             if arguments.strip():
@@ -151,30 +149,72 @@ class AgentTool:
                     parsed_args = {"input": arguments}
         elif isinstance(arguments, dict):
             parsed_args = arguments
+        return parsed_args
 
+    def _prepare_call(self, parsed_args: dict[str, Any]) -> dict[str, Any]:
+        """Prepare validated kwargs for the function."""
+        sig = inspect.signature(self.fn)
+        params = sig.parameters
+        if not params:
+            return {}
+        if len(params) == 1:
+            param = next(iter(params.values()))
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                return parsed_args
+            if param.name not in parsed_args:
+                first_val = next(iter(parsed_args.values())) if parsed_args else None
+                return {param.name: first_val}
+
+        valid_args = {}
+        for k, v in parsed_args.items():
+            if k in params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+                valid_args[k] = v
+        return valid_args
+
+    def execute(self, arguments: dict[str, Any] | str | None = None) -> str:
+        """Execute the wrapped function synchronously and return a string observation."""
         try:
-            # Check if function accepts kwargs or positional
-            sig = inspect.signature(self.fn)
-            params = sig.parameters
-
-            if not params:
-                result = self.fn()
-            elif len(params) == 1 and list(params.keys())[0] not in parsed_args:
-                # If single param expected and keys don't match, pass the first val or raw dict
-                first_val = next(iter(parsed_args.values())) if parsed_args else arguments
-                result = self.fn(first_val)
+            parsed_args = self._parse_arguments(arguments)
+            kwargs = self._prepare_call(parsed_args)
+            
+            if inspect.iscoroutinefunction(self.fn):
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                    
+                if loop and loop.is_running():
+                    return f"Error: Cannot execute async tool {self.name!r} synchronously in a running event loop."
+                result = asyncio.run(self.fn(**kwargs))
             else:
-                # Filter only valid keyword arguments
-                valid_args = {k: v for k, v in parsed_args.items() if k in params}
-                result = self.fn(**valid_args)
+                result = self.fn(**kwargs)
 
             if isinstance(result, str):
                 return result
             return json.dumps(result, ensure_ascii=False)
-
         except NodeInterrupt:
             raise
+        except Exception as exc:  # noqa: BLE001
+            return f"Error executing tool {self.name!r}: {exc}"
 
+    async def aexecute(self, arguments: dict[str, Any] | str | None = None) -> str:
+        """Execute the wrapped function asynchronously and return a string observation."""
+        try:
+            parsed_args = self._parse_arguments(arguments)
+            kwargs = self._prepare_call(parsed_args)
+            
+            if inspect.iscoroutinefunction(self.fn):
+                result = await self.fn(**kwargs)
+            else:
+                import asyncio
+                result = await asyncio.to_thread(self.fn, **kwargs)
+
+            if isinstance(result, str):
+                return result
+            return json.dumps(result, ensure_ascii=False)
+        except NodeInterrupt:
+            raise
         except Exception as exc:  # noqa: BLE001
             return f"Error executing tool {self.name!r}: {exc}"
 
@@ -182,64 +222,21 @@ class AgentTool:
         return self.fn(*args, **kwargs)
 
 
-
-
-
-
-
-
-
-
-
-@overload
-def tool(fn: Callable[..., Any], /) -> AgentTool: ...
-
-
-@overload
 def tool(
-    *,
     name: str | None = None,
     description: str | None = None,
     parameters: dict[str, Any] | None = None,
-) -> Callable[[Callable[..., Any]], AgentTool]: ...
-
-
-def tool(
-    fn_or_name: Callable[..., Any] | str | None = None,
-    *,
-    name: str | None = None,
-    description: str | None = None,
-    parameters: dict[str, Any] | None = None,
-) -> AgentTool | Callable[[Callable[..., Any]], AgentTool]:
+    tags: list[str] | None = None,
+) -> Callable[[Callable[..., Any]], AgentTool]:
     """Decorator to convert a standard Python function into an AgentTool."""
-    custom_name = name if name is not None else (fn_or_name if isinstance(fn_or_name, str) else None)
-
-    if callable(fn_or_name):
-        fn = fn_or_name
-        tool_name = custom_name or getattr(fn, "__name__", "unnamed_tool")
-        return AgentTool(
-            fn=fn,
-            name=tool_name,
-            description=description,
-            parameters=parameters,
-        )
 
     def decorator(fn: Callable[..., Any]) -> AgentTool:
-        if isinstance(fn, AgentTool):
-            if custom_name:
-                fn.name = custom_name
-            if description:
-                fn.description = description
-            if parameters:
-                fn.parameters = parameters
-            return fn
-
-        tool_name = custom_name or getattr(fn, "__name__", "unnamed_tool")
         return AgentTool(
             fn=fn,
-            name=tool_name,
+            name=name,
             description=description,
             parameters=parameters,
+            tags=tags,
         )
 
     return decorator

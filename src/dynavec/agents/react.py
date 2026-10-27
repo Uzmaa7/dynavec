@@ -10,6 +10,7 @@ from typing import Any
 from ..chat.base import ChatModel, Message, Tool
 from ..exceptions import NodeInterrupt
 from .base import AgentResult, AgentStep, AgentTool
+from ..exceptions import NodeInterrupt
 
 DEFAULT_REACT_SYSTEM_PROMPT = """You are a helpful and precise reasoning agent.
 You solve tasks step-by-step using a ReAct (Reason + Act) approach.
@@ -236,7 +237,7 @@ class ReActAgent:
 
                 try:
                     if tool_instance is not None:
-                        obs = await asyncio.to_thread(tool_instance.execute, tc.arguments)
+                        obs = await tool_instance.aexecute(tc.arguments)
                     else:
                         obs = f"Error: Tool {tc.name!r} is not registered in available tools."
                 except NodeInterrupt as exc:

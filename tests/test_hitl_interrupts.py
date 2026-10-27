@@ -42,7 +42,7 @@ class DummyChatModel(ChatModel):
         yield ChatChunk(content="")
 
 
-@tool
+@tool()
 def sensitive_action_tool(action: str) -> str:
     """Action requiring human approval."""
     interrupt("approval_node", f"Action '{action}' requires approval. Confirm?")
