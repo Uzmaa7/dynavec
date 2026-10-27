@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Callable, Sequence
 from typing import Any
@@ -10,7 +9,6 @@ from typing import Any
 from ..chat.base import ChatModel, Message, Tool
 from ..exceptions import NodeInterrupt
 from .base import AgentResult, AgentStep, AgentTool
-from ..exceptions import NodeInterrupt
 
 DEFAULT_REACT_SYSTEM_PROMPT = """You are a helpful and precise reasoning agent.
 You solve tasks step-by-step using a ReAct (Reason + Act) approach.
